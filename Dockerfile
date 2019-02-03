@@ -181,6 +181,9 @@ COPY --from=boost_build-stage /build/boost/lib  /usr/lib/
 COPY --from=deluge_build-stage /build/deluge/usr/ /usr/
 COPY --from=libtorrent_build-stage /build/libtorrent/usr/ /usr/
 
+# environment variables
+ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
+
 # install build packages
 RUN \
 	apk add --no-cache --virtual=build-dependencies \
