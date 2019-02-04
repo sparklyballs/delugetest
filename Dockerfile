@@ -148,6 +148,32 @@ RUN \
 		--prefix=/usr \
 		--root=/build/deluge
 
+FROM alpine:${ALPINE_VER} as pip-stage
+
+# install build packages
+RUN \
+	apk add --no-cache \
+		g++ \
+		libffi-dev \
+		make \
+		openssl-dev \
+		py2-pip \
+		python-dev
+
+# install pip packages
+RUN \
+	set -ex \
+	&& pip install --no-cache-dir -U \
+		chardet \
+		enum \
+		mako \
+		pyOpenSSL \
+		pyxdg \
+		resources \
+		service_identity \
+		twisted \
+		zope.interface
+
 FROM alpine:${ALPINE_VER} as strip-stage
 
 ############## strip packages stage ##############
@@ -156,6 +182,7 @@ FROM alpine:${ALPINE_VER} as strip-stage
 COPY --from=boost_build-stage /build/boost/lib  /build/all/usr/lib/
 COPY --from=deluge_build-stage /build/deluge/usr/ /build/all/usr/
 COPY --from=libtorrent_build-stage /build/libtorrent/usr/ /build/all/usr/
+COPY --from=pip-stage /usr/lib/python2.7/site-packages /build/all/usr/lib/python2.7/site-packages
 
 # install strip packages
 RUN \
@@ -165,10 +192,10 @@ RUN \
 # strip packages
 RUN \
 	set -ex \
-	&& for dirs in usr/bin bin usr/lib lib usr/sbin sbin ; \
+	&& for dirs in usr/bin bin usr/lib lib usr/sbin sbin usr/lib/python2.7/site-packages; \
 	do \
 		find /build/all/$dirs -type f | \
-		while read -r files ; do strip ${files} 2>/dev/null || true \
+		while read -r files ; do strip ${files} || true \
 		; done \
 	; done
 
@@ -177,20 +204,23 @@ RUN \
 	set -ex \
 	&& for cleanfiles in deluge-console deluge-gtk *.la *.pyc *.pyo; \
 	do \
-	find /build/all/ -iname "${cleanfiles}" -exec rm -f '{}' + \
+	find /build/all/ -iname "${cleanfiles}" -exec rm -vf '{}' + \
 	; done
 
 # remove uneeded folders
 RUN \
 	set -ex \
-	&& rm -rf \
+	&& rm -rvf \
 		/build/all/usr/include \
 		/build/all/usr/lib/pkgconfig \
 		/build/all/usr/share/applications \
 		/build/all/usr/share/icons \
 		/build/all/usr/share/man \
-		/build/all/usr/share/pixmaps
-
+		/build/all/usr/share/pixmaps \
+ 		/build/all/usr/lib/python*/site-packages/deluge/share/pixmaps \
+		/build/all/usr/lib/python*/site-packages/deluge/share/man \
+		/build/all/usr/lib/python*/site-packages/deluge/ui/gtkui \
+		/build/all/usr/lib/python*/site-packages/deluge/ui/console
 
 FROM lsiobase/alpine:${ALPINE_VER}
 
@@ -202,47 +232,12 @@ COPY --from=strip-stage /build/all/usr/  /usr/
 # environment variables
 ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 
-# install build packages
-RUN \
-	apk add --no-cache --virtual=build-dependencies \
-		g++ \
-		libffi-dev \
-		make \
-		openssl-dev \
-		py2-pip \
-		python-dev \
-	\
-# install pip packages
-	\
-	&& pip install --no-cache-dir -U \
-		chardet \
-		enum \
-		mako \
-		pyOpenSSL \
-		pyxdg \
-		resources \
-		service_identity \
-		twisted \
-		zope.interface \
-	\
-# uninstall build packages
-	\
-	&& apk del \
-		build-dependencies \
-	\
 # install runtime packages
-	\
-	&& apk add --no-cache \
+RUN \	
+	apk add --no-cache \
 		libstdc++ \
 		py2-setuptools \
-		python \
-# cleanup
-	\
-	&& rm -rf \
-		/tmp/* \
-		/root \
-	&& mkdir -p \
-		/root
+		python
 
 # add local files
 COPY root/ /
