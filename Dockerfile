@@ -150,6 +150,8 @@ RUN \
 
 FROM alpine:${ALPINE_VER} as pip-stage
 
+############## pip packages install stage ##############
+
 # install build packages
 RUN \
 	apk add --no-cache \
