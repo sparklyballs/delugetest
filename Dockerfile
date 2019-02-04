@@ -1,6 +1,8 @@
 ARG ALPINE_VER="edge"
 FROM alpine:${ALPINE_VER} as fetch-stage
 
+############## fetch stage ##############
+
 # package versions
 ARG BOOST_VER="1.67.0"
 ARG DELUGE_VER="1.3.15"
@@ -20,7 +22,7 @@ RUN \
 	&& LIBTORRENT_VER_1="${LIBTORRENT_VER//[.]/_}" \
 	&& curl -o \
 	/tmp/boost.tar.bz2 -L \
-		"http://downloads.sourceforge.net/project/boost/boost/${BOOST_VER}/boost_${BOOST_VER_1}.tar.bz2" \
+		"https://dl.bintray.com/boostorg/release/${BOOST_VER}/source/boost_${BOOST_VER_1}.tar.bz2" \
 	&& curl -o \
 	/tmp/deluge.tar.bz2 -L \
 		"http://download.deluge-torrent.org/source/deluge-${DELUGE_VER}.tar.bz2" \
@@ -46,6 +48,8 @@ RUN \
 	/src/libtorrent --strip-components=1
 
 FROM alpine:${ALPINE_VER} as boost_build-stage
+
+############## boost build stage ##############
 
 # copy artifacts from fetch stage
 COPY --from=fetch-stage /src/boost /src/boost
@@ -81,17 +85,9 @@ RUN \
 			--layout=system \
 			install
 
-# strip package
-RUN \
-	set -ex \
-	&& for dirs in usr/bin bin usr/lib lib usr/sbin sbin ; \
-	do \
-		find /build/boost/$dirs -type f | \
-		while read -r files ; do strip ${files} 2>/dev/null || true \
-		; done \
-	; done
-
 FROM alpine:${ALPINE_VER} as libtorrent_build-stage
+
+############## libtorrent build  stage ##############
 
 # copy artifacts from fetch and boost build stages
 COPY --from=fetch-stage /src/libtorrent /src/libtorrent
@@ -123,25 +119,13 @@ RUN \
 	&& make DESTDIR=/build/libtorrent install \
 	&& make -C bindings/python DESTDIR=/build/libtorrent install
 
-# strip package
-RUN \
-	set -ex \
-	&& for dirs in usr/bin bin usr/lib lib usr/sbin sbin ; \
-	do \
-		find /build/libtorrent/$dirs -type f | \
-		while read -r files ; do strip ${files} 2>/dev/null || true \
-		; done \
-	; done
-
 FROM alpine:${ALPINE_VER} as deluge_build-stage
+
+############## deluge build  stage ##############
 
 # copy artifacts from fetch and libtorrent build stages
 COPY --from=fetch-stage /src/deluge /src/deluge
 COPY --from=libtorrent_build-stage /build/libtorrent /build/libtorrent
-
-# build environment variables 
-ARG BOOST_LDFLAGS="-L/build/boost/lib"
-ARG BOOST_CPPFLAGS="-I/build/boost/include"
 
 # install build packages
 RUN \
@@ -164,22 +148,56 @@ RUN \
 		--prefix=/usr \
 		--root=/build/deluge
 
-# strip package
+FROM alpine:${ALPINE_VER} as strip-stage
+
+############## strip packages stage ##############
+
+# copy artifacts build stages
+COPY --from=boost_build-stage /build/boost/lib  /build/all/usr/lib/
+COPY --from=deluge_build-stage /build/deluge/usr/ /build/all/usr/
+COPY --from=libtorrent_build-stage /build/libtorrent/usr/ /build/all/usr/
+
+# install strip packages
+RUN \
+	apk add --no-cache \
+		binutils
+
+# strip packages
 RUN \
 	set -ex \
 	&& for dirs in usr/bin bin usr/lib lib usr/sbin sbin ; \
 	do \
-		find /build/deluge/$dirs -type f | \
+		find /build/all/$dirs -type f | \
 		while read -r files ; do strip ${files} 2>/dev/null || true \
 		; done \
 	; done
 
+# remove unneeded files
+RUN \	
+	set -ex \
+	&& for cleanfiles in deluge-console deluge-gtk *.la *.pyc *.pyo; \
+	do \
+	find /build/all/ -iname "${cleanfiles}" -exec rm -f '{}' + \
+	; done
+
+# remove uneeded folders
+RUN \
+	set -ex \
+	&& rm -rf \
+		/build/all/usr/include \
+		/build/all/usr/lib/pkgconfig \
+		/build/all/usr/share/applications \
+		/build/all/usr/share/icons \
+		/build/all/usr/share/man \
+		/build/all/usr/share/pixmaps
+
+
 FROM lsiobase/alpine:${ALPINE_VER}
 
-# copy artifacts build stages
-COPY --from=boost_build-stage /build/boost/lib  /usr/lib/
-COPY --from=deluge_build-stage /build/deluge/usr/ /usr/
-COPY --from=libtorrent_build-stage /build/libtorrent/usr/ /usr/
+############## runtime stage ##############
+
+# copy artifacts strip stage
+COPY --from=strip-stage /build/all/usr/  /usr/
 
 # environment variables
 ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
