@@ -194,7 +194,7 @@ RUN \
 # strip packages
 RUN \
 	set -ex \
-	&& for dirs in usr/bin bin usr/lib lib usr/sbin sbin usr/lib/python2.7/site-packages; \
+	&& for dirs in usr/bin usr/lib usr/lib/python2.7/site-packages usr/sbin; \
 	do \
 		find /build/all/$dirs -type f | \
 		while read -r files ; do strip ${files} || true \
@@ -215,14 +215,14 @@ RUN \
 	&& rm -rvf \
 		/build/all/usr/include \
 		/build/all/usr/lib/pkgconfig \
+		/build/all/usr/lib/python*/site-packages/deluge/share/man \
+		/build/all/usr/lib/python*/site-packages/deluge/share/pixmaps \
+		/build/all/usr/lib/python*/site-packages/deluge/ui/console \
+		/build/all/usr/lib/python*/site-packages/deluge/ui/gtkui \
 		/build/all/usr/share/applications \
 		/build/all/usr/share/icons \
 		/build/all/usr/share/man \
-		/build/all/usr/share/pixmaps \
- 		/build/all/usr/lib/python*/site-packages/deluge/share/pixmaps \
-		/build/all/usr/lib/python*/site-packages/deluge/share/man \
-		/build/all/usr/lib/python*/site-packages/deluge/ui/gtkui \
-		/build/all/usr/lib/python*/site-packages/deluge/ui/console
+		/build/all/usr/share/pixmaps
 
 FROM lsiobase/alpine:${ALPINE_VER}
 
