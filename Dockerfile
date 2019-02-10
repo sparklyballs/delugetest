@@ -9,8 +9,6 @@ ARG DELUGE_VER="1.3.15"
 ARG LIBTORRENT_VER="1.1.12"
 
 # install fetch packages
-
-# hadolint ignore=DL3018
 RUN \
 	set -ex \
 	&& apk add --no-cache \
@@ -65,8 +63,6 @@ COPY --from=fetch-stage /src/boost /src/boost
 WORKDIR /src/boost
 
 # install build packages
-
-# hadolint ignore=DL3018
 RUN \
 	set -ex \
 	&& apk add --no-cache \
@@ -113,8 +109,6 @@ ARG BOOST_CPPFLAGS="-I/build/boost/include"
 WORKDIR /src/libtorrent
 
 # install build packages
-
-# hadolint ignore=DL3018
 RUN \
 	set -ex \
 	&& apk add --no-cache \
@@ -148,8 +142,6 @@ COPY --from=libtorrent_build-stage /build/libtorrent /build/libtorrent
 WORKDIR /src/deluge
 
 # install build packages
-
-# hadolint ignore=DL3018
 RUN \
 	set -ex \
 	&& apk add --no-cache \
@@ -175,8 +167,6 @@ FROM alpine:${ALPINE_VER} as pip-stage
 ############## pip packages install stage ##############
 
 # install build packages
-
-# hadolint ignore=DL3018
 RUN \
 	set -ex \
 	&& apk add --no-cache \
@@ -188,8 +178,6 @@ RUN \
 		python2-dev
 
 # install pip packages
-
-# hadolint ignore=DL3013
 RUN \
 	set -ex \
 	&& pip install --no-cache-dir -U \
@@ -214,8 +202,6 @@ COPY --from=libtorrent_build-stage /build/libtorrent/usr/ /build/all/usr/
 COPY --from=pip-stage /usr/lib/python2.7/site-packages /build/all/usr/lib/python2.7/site-packages
 
 # install strip packages
-
-# hadolint ignore=DL3018
 RUN \
 	set -ex \
 	&& apk add --no-cache \
@@ -269,8 +255,6 @@ COPY --from=strip-stage /build/all/usr/  /usr/
 ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 
 # install runtime packages
-
-# hadolint ignore=DL3018
 RUN \	
 	set -ex \
 	&& apk add --no-cache \
