@@ -9,11 +9,17 @@ ARG DELUGE_VER="1.3.15"
 ARG LIBTORRENT_VER="1.1.12"
 
 # install fetch packages
+
 RUN \
-	apk add --no-cache \
+	set -ex \
+	&& apk add --no-cache \
+		bash \
 		bzip2 \
 		curl \
 		tar
+
+# set shell
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # fetch source code
 RUN \
@@ -54,23 +60,28 @@ FROM alpine:${ALPINE_VER} as boost_build-stage
 # copy artifacts from fetch stage
 COPY --from=fetch-stage /src/boost /src/boost
 
+# set workdir
+WORKDIR /src/boost
+
 # install build packages
+
+# hadolint ignore=DL3018
 RUN \
-	apk add --no-cache \
+	set -ex \
+	&& apk add --no-cache \
 		bison \
-		bzip2-dev \
+		bzip2 \
 		file \
 		flex \
 		g++ \
 		linux-headers \
 		make \
-		python-dev \
+		python2-dev \
 		zlib-dev
 
 # build package
 RUN \
 	set -ex \
-	&& cd /src/boost \
 	&& sh bootstrap.sh \
 			--with-icu \
 			--with-libraries=chrono,random,system,python \
@@ -97,20 +108,25 @@ COPY --from=boost_build-stage /build/boost /build/boost
 ARG BOOST_LDFLAGS="-L/build/boost/lib"
 ARG BOOST_CPPFLAGS="-I/build/boost/include"
 
+# set workdir
+WORKDIR /src/libtorrent
+
 # install build packages
+
+# hadolint ignore=DL3018
 RUN \
-	apk add --no-cache \
+	set -ex \
+	&& apk add --no-cache \
 		file \
 		g++ \
 		linux-headers \
 		make \
 		openssl-dev \
-		python-dev
+		python2-dev
 
 # build package
 RUN \
 	set -ex \
-	&& cd /src/libtorrent \
 	&& ./configure \
 		--disable-static \
 	--enable-python-binding \
@@ -127,9 +143,15 @@ FROM alpine:${ALPINE_VER} as deluge_build-stage
 COPY --from=fetch-stage /src/deluge /src/deluge
 COPY --from=libtorrent_build-stage /build/libtorrent /build/libtorrent
 
+# set workdir
+WORKDIR /src/deluge
+
 # install build packages
+
+# hadolint ignore=DL3018
 RUN \
-	apk add --no-cache \
+	set -ex \
+	&& apk add --no-cache \
 		bash \
 		g++ \
 		intltool \
@@ -137,12 +159,11 @@ RUN \
 		make \
 		openssl-dev \
 		py2-pip \
-		python-dev
+		python2-dev
 
-# build pacakge
+# build package
 RUN \
 	set -ex \
-	&& cd /src/deluge \
 	&& python -B setup.py install \
 		--no-compile \
 		--prefix=/usr \
@@ -153,16 +174,21 @@ FROM alpine:${ALPINE_VER} as pip-stage
 ############## pip packages install stage ##############
 
 # install build packages
+
+# hadolint ignore=DL3018
 RUN \
-	apk add --no-cache \
+	set -ex \
+	&& apk add --no-cache \
 		g++ \
 		libffi-dev \
 		make \
 		openssl-dev \
 		py2-pip \
-		python-dev
+		python2-dev
 
 # install pip packages
+
+# hadolint ignore=DL3013
 RUN \
 	set -ex \
 	&& pip install --no-cache-dir -U \
@@ -187,17 +213,24 @@ COPY --from=libtorrent_build-stage /build/libtorrent/usr/ /build/all/usr/
 COPY --from=pip-stage /usr/lib/python2.7/site-packages /build/all/usr/lib/python2.7/site-packages
 
 # install strip packages
+
+# hadolint ignore=DL3018
 RUN \
-	apk add --no-cache \
+	set -ex \
+	&& apk add --no-cache \
+		bash \
 		binutils
+
+# set shell
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # strip packages
 RUN \
 	set -ex \
-	&& for dirs in usr/bin usr/lib usr/lib/python2.7/site-packages usr/sbin; \
+	&& for dirs in usr/bin usr/lib usr/lib/python2.7/site-packages; \
 	do \
-		find /build/all/$dirs -type f | \
-		while read -r files ; do strip ${files} || true \
+		find /build/all/"${dirs}" -type f | \
+		while read -r files ; do strip "${files}" || true \
 		; done \
 	; done
 
@@ -235,11 +268,14 @@ COPY --from=strip-stage /build/all/usr/  /usr/
 ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 
 # install runtime packages
+
+# hadolint ignore=DL3018
 RUN \	
-	apk add --no-cache \
+	set -ex \
+	&& apk add --no-cache \
 		libstdc++ \
-		py2-setuptools \
-		python
+		py-setuptools \
+		python2
 
 # add local files
 COPY root/ /
