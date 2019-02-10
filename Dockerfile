@@ -10,6 +10,7 @@ ARG LIBTORRENT_VER="1.1.12"
 
 # install fetch packages
 
+# hadolint ignore=DL3018
 RUN \
 	set -ex \
 	&& apk add --no-cache \
