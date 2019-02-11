@@ -244,7 +244,7 @@ RUN \
 		/build/all/usr/share/man \
 		/build/all/usr/share/pixmaps
 
-FROM lsiobase/alpine:${ALPINE_VER}
+FROM sparklyballs/alpine-test:${ALPINE_VER}
 
 ############## runtime stage ##############
 
