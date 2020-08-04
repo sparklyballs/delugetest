@@ -1,266 +1,228 @@
-ARG ALPINE_VER="3.9"
+ARG ALPINE_VER="3.12"
 FROM alpine:${ALPINE_VER} as fetch-stage
 
 ############## fetch stage ##############
 
-# package versions
-ARG BOOST_VER="1.67.0"
-ARG DELUGE_VER="1.3.15"
-ARG LIBTORRENT_VER="1.1.12"
-
-# install fetch packages
+# install fetch packages
 RUN \
-	set -ex \
-	&& apk add --no-cache \
+	apk add --no-cache \
 		bash \
-		bzip2 \
 		curl \
-		tar
+		xz
 
-# set shell
+# set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# fetch source code
+# fetch version file
 RUN \
 	set -ex \
-	&& BOOST_VER_1="${BOOST_VER//[.]/_}" \
-	&& LIBTORRENT_VER_1="${LIBTORRENT_VER//[.]/_}" \
 	&& curl -o \
-	/tmp/boost.tar.bz2 -L \
-		"https://dl.bintray.com/boostorg/release/${BOOST_VER}/source/boost_${BOOST_VER_1}.tar.bz2" \
-	&& curl -o \
-	/tmp/deluge.tar.bz2 -L \
-		"http://download.deluge-torrent.org/source/deluge-${DELUGE_VER}.tar.bz2" \
-	&& curl -o \
-	/tmp/libtorrent.tar.gz -L \
-		"https://github.com/arvidn/libtorrent/releases/download/libtorrent_${LIBTORRENT_VER_1}/libtorrent-rasterbar-${LIBTORRENT_VER}.tar.gz"
+	/tmp/version.txt -L \
+	"https://raw.githubusercontent.com/sparklyballs/versioning/master/version.txt"
 
-# extract source code
+# fetch source code
+# hadolint ignore=SC1091
 RUN \
-	set -ex \
+	. /tmp/version.txt \
+	&& set -ex \
 	&& mkdir -p \
-		/src/boost \
-		/src/deluge \
-		/src/libtorrent \
+		/source/rasterbar \
+		/source/deluge \
+	&& curl -o \
+	/tmp/rasterbar.tar.gz	-L \
+		"https://github.com/arvidn/libtorrent/releases/download/libtorrent-${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
 	&& tar xf \
-	/tmp/boost.tar.bz2 -C \
-	/src/boost --strip-components=1 \
+	/tmp/rasterbar.tar.gz -C \
+	/source/rasterbar --strip-components=1 \
+	&& curl -o \
+	/tmp/deluge.tar.xz -L \
+		"http://download.deluge-torrent.org/source/${DELUGE_RELEASE%.*}/deluge-${DELUGE_RELEASE}.tar.xz" \
 	&& tar xf \
-	/tmp/deluge.tar.bz2 -C \
-	/src/deluge --strip-components=1 \
-	&& tar xf \
-	/tmp/libtorrent.tar.gz -C \
-	/src/libtorrent --strip-components=1
+	/tmp/deluge.tar.xz -C \
+	/source/deluge --strip-components=1
 
-FROM alpine:${ALPINE_VER} as boost_build-stage
+FROM alpine:${ALPINE_VER} as packages-stage
 
-############## boost build stage ##############
-
-# copy artifacts from fetch stage
-COPY --from=fetch-stage /src/boost /src/boost
-
-# set workdir
-WORKDIR /src/boost
-
-# install build packages
-RUN \
-	set -ex \
-	&& apk add --no-cache \
-		bison \
-		bzip2 \
-		file \
-		flex \
-		g++ \
-		linux-headers \
-		make \
-		python2-dev \
-		zlib-dev
-
-# build package
-RUN \
-	set -ex \
-	&& sh bootstrap.sh \
-			--with-icu \
-			--with-libraries=chrono,random,system,python \
-			--with-python-version=2.7 \
-			--with-toolset=gcc \
-	&& ./b2 \
-			variant=release \
-			link=shared \
-			threading=single \
-			runtime-link=shared \
-			--prefix=/build/boost \
-			--layout=system \
-			install
-
-FROM alpine:${ALPINE_VER} as libtorrent_build-stage
-
-############## libtorrent build  stage ##############
-
-# copy artifacts from fetch and boost build stages
-COPY --from=fetch-stage /src/libtorrent /src/libtorrent
-COPY --from=boost_build-stage /build/boost /build/boost
-
-# build environment variables 
-ARG BOOST_LDFLAGS="-L/build/boost/lib"
-ARG BOOST_CPPFLAGS="-I/build/boost/include"
-
-# set workdir
-WORKDIR /src/libtorrent
-
-# install build packages
-RUN \
-	set -ex \
-	&& apk add --no-cache \
-		file \
-		g++ \
-		linux-headers \
-		make \
-		openssl-dev \
-		python2-dev
-
-# build package
-RUN \
-	set -ex \
-	&& ./configure \
-		--disable-static \
-	--enable-python-binding \
-	--enable-shared \
-	--prefix=/usr \
-	&& make DESTDIR=/build/libtorrent install \
-	&& make -C bindings/python DESTDIR=/build/libtorrent install
-
-FROM alpine:${ALPINE_VER} as deluge_build-stage
-
-############## deluge build  stage ##############
-
-# copy artifacts from fetch and libtorrent build stages
-COPY --from=fetch-stage /src/deluge /src/deluge
-COPY --from=libtorrent_build-stage /build/libtorrent /build/libtorrent
-
-# set workdir
-WORKDIR /src/deluge
-
-# install build packages
-RUN \
-	set -ex \
-	&& apk add --no-cache \
-		bash \
-		g++ \
-		intltool \
-		librsvg-dev \
-		make \
-		openssl-dev \
-		py2-pip \
-		python2-dev
-
-# build package
-RUN \
-	set -ex \
-	&& python -B setup.py install \
-		--no-compile \
-		--prefix=/usr \
-		--root=/build/deluge
-
-FROM alpine:${ALPINE_VER} as pip-stage
-
-############## pip packages install stage ##############
+############## packages stage ##############
 
 # install build packages
 RUN \
-	set -ex \
-	&& apk add --no-cache \
+	apk add --no-cache \
+		boost-dev \
+		freetype-dev \
 		g++ \
+		gcc \
+		git \
+		lcms2-dev \
 		libffi-dev \
+		libimagequant-dev \
+		libjpeg-turbo-dev \
+		libpng-dev \
+		libwebp-dev \
+		libxcb-dev \
 		make \
+		openjpeg-dev \
 		openssl-dev \
-		py2-pip \
-		python2-dev
+		py3-pip \
+		python3-dev \
+		tiff-dev \
+		zlib-dev
 
-# install pip packages
+FROM packages-stage as rasterbar-build-stage
+
+############## rasterbar build stage ##############
+
+# add artifacts from source stage
+COPY --from=fetch-stage /source /source
+
+# set workdir
+WORKDIR /source/rasterbar
+
+# build rasterbar
 RUN \
 	set -ex \
-	&& pip install --no-cache-dir -U \
+	&& ./configure \
+		--enable-python-binding \
+		--enable-tests \
+		--localstatedir=/var \
+		--mandir=/usr/share/man \
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--with-boost-system=python3.8 \
+	&& make -j4 \
+	&& make DESTDIR=/output/rasterbar install
+
+FROM packages-stage as pip-stage
+
+############## pip stage ##############
+
+# install pip and python packages
+RUN \
+	pip3 install -U \
+	pip \
+	wheel
+
+RUN \
+	apk add --no-cache \
+		py3-cairo \
+		py3-gobject3 \
+		py3-openssl \
+		py3-xdg \
+	&& pip3 install -U \
+		asn1 \
 		chardet \
-		enum \
+		hyperlink \
 		mako \
-		pyOpenSSL \
-		pyxdg \
-		resources \
-		service_identity \
+		markupsafe \
+		pillow \
+		pyhamcrest \
+		rencode \
+		service-identity \
+		setproctitle \
+		setuptools \
+		six \
 		twisted \
-		zope.interface
+		zope-interface
+
+FROM packages-stage as deluge-stage
+
+############## deluge stage ##############
+	
+# add patch and artifacts from fetch and rasterbar stages
+COPY --from=fetch-stage /source /source
+COPY --from=pip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
+COPY --from=rasterbar-build-stage /output/rasterbar/usr /usr
+COPY deluge.patch /
+COPY deluge.patch2 /
+
+# set workdir
+WORKDIR /source/deluge
+
+
+# build app
+RUN \
+	set -ex \
+	&& git apply /deluge.patch \
+	&& git apply /deluge.patch2 \
+	&& python3 setup.py build \
+	&& python3 setup.py install --prefix=/usr --root="/builds/deluge"
 
 FROM alpine:${ALPINE_VER} as strip-stage
 
-############## strip packages stage ##############
+############## strip stage ##############
 
-# copy artifacts build stages
-COPY --from=boost_build-stage /build/boost/lib  /build/all/usr/lib/
-COPY --from=deluge_build-stage /build/deluge/usr/ /build/all/usr/
-COPY --from=libtorrent_build-stage /build/libtorrent/usr/ /build/all/usr/
-COPY --from=pip-stage /usr/lib/python2.7/site-packages /build/all/usr/lib/python2.7/site-packages
+# add artifacts from pip, deluge and rasterbar stages
+COPY --from=pip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
+COPY --from=rasterbar-build-stage /output/rasterbar/usr /builds/usr
+COPY --from=deluge-stage /builds/deluge/usr /builds/usr
 
-# install strip packages
+# install strip packages
 RUN \
-	set -ex \
-	&& apk add --no-cache \
+	apk add --no-cache \
 		bash \
 		binutils
 
-# set shell
+# set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# strip packages
+# strip pip packages
 RUN \
 	set -ex \
-	&& for dirs in usr/bin usr/lib usr/lib/python2.7/site-packages; \
+	&& find /usr/lib/python3.8/site-packages -type f | \
+		while read -r files ; \
+		do strip "${files}" || true \
+	; done
+
+# strip packages
+RUN \
+	set -ex \
+	&& for dirs in /usr/bin /usr/lib /usr/include /usr/share; \
 	do \
-		find /build/all/"${dirs}" -type f | \
+		find /builds/"${dirs}" -type f | \
 		while read -r files ; do strip "${files}" || true \
 		; done \
 	; done
 
-# remove unneeded files
+# remove unneeded files
 RUN \	
 	set -ex \
-	&& for cleanfiles in deluge-console deluge-gtk *.la *.pyc *.pyo; \
+	&& for cleanfiles in *.la *.pyc *.pyo; \
 	do \
-	find /build/all/ -iname "${cleanfiles}" -exec rm -vf '{}' + \
+	find /usr/lib/python3.8/site-packages -iname "${cleanfiles}" -exec rm -vf '{}' + \
 	; done
-
-# remove uneeded folders
-RUN \
-	set -ex \
-	&& rm -rvf \
-		/build/all/usr/include \
-		/build/all/usr/lib/pkgconfig \
-		/build/all/usr/lib/python*/site-packages/deluge/share/man \
-		/build/all/usr/lib/python*/site-packages/deluge/share/pixmaps \
-		/build/all/usr/lib/python*/site-packages/deluge/ui/console \
-		/build/all/usr/lib/python*/site-packages/deluge/ui/gtkui \
-		/build/all/usr/share/applications \
-		/build/all/usr/share/icons \
-		/build/all/usr/share/man \
-		/build/all/usr/share/pixmaps
 
 FROM sparklyballs/alpine-test:${ALPINE_VER}
 
 ############## runtime stage ##############
 
-# copy artifacts strip stage
-COPY --from=strip-stage /build/all/usr/  /usr/
-
 # environment variables
 ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 
-# install runtime packages
-RUN \	
-	set -ex \
-	&& apk add --no-cache \
-		libstdc++ \
-		py-setuptools \
-		python2
+# add artifacts from strip stage
+COPY --from=strip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
+COPY --from=strip-stage /builds/usr /usr
+
+# install packages
+RUN \
+	apk add --no-cache \
+		boost-python3 \
+#		freetype \
+#		gettext \
+#		lcms2 \
+		libffi \
+#		libimagequant \
+#		libjpeg-turbo \
+#		libpng \
+#		libstdc++ \
+#		libwebp \
+#		libxcb \
+#		openjpeg \
+		p7zip \
+#		py3-cairo \
+#		py3-gobject3 \
+#		py3-openssl \
+#		tiff \
+		unzip
 
 # add local files
 COPY root/ /
