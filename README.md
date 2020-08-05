@@ -1,1 +1,1 @@
-test version of deluge
+test version of deluge built from source

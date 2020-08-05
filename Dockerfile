@@ -99,8 +99,8 @@ FROM packages-stage as pip-stage
 # install pip and python packages
 RUN \
 	pip3 install -U \
-	pip \
-	wheel
+		pip \
+		wheel
 
 RUN \
 	apk add --no-cache \
@@ -121,10 +121,11 @@ RUN \
 		setproctitle \
 		setuptools \
 		six \
+		slimit \
 		twisted \
 		zope-interface
 
-FROM packages-stage as deluge-stage
+FROM packages-stage as deluge-build-stage
 
 ############## deluge stage ##############
 	
@@ -132,8 +133,7 @@ FROM packages-stage as deluge-stage
 COPY --from=fetch-stage /source /source
 COPY --from=pip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
 COPY --from=rasterbar-build-stage /output/rasterbar/usr /usr
-COPY deluge.patch /
-COPY deluge.patch2 /
+COPY patches /patches
 
 # set workdir
 WORKDIR /source/deluge
@@ -142,19 +142,23 @@ WORKDIR /source/deluge
 # build app
 RUN \
 	set -ex \
-	&& git apply /deluge.patch \
-	&& git apply /deluge.patch2 \
-	&& python3 setup.py build \
-	&& python3 setup.py install --prefix=/usr --root="/builds/deluge"
+	&& git apply /patches/logging.patch \
+	&& git apply /patches/locale.patch \
+	&& python3 setup.py \
+		build \
+	&& python3 setup.py \
+		install \
+		--prefix=/usr \
+		--root="/builds/deluge"
 
 FROM alpine:${ALPINE_VER} as strip-stage
 
 ############## strip stage ##############
 
-# add artifacts from pip, deluge and rasterbar stages
+# add artifacts from deluge, pip and rasterbar stages
+COPY --from=deluge-build-stage /builds/deluge/usr /builds/usr
 COPY --from=pip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
 COPY --from=rasterbar-build-stage /output/rasterbar/usr /builds/usr
-COPY --from=deluge-stage /builds/deluge/usr /builds/usr
 
 # install strip packages
 RUN \
@@ -195,12 +199,18 @@ FROM sparklyballs/alpine-test:${ALPINE_VER}
 
 ############## runtime stage ##############
 
-# environment variables
-ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
+# add unrar
+# sourced from self builds here:- 
+# https://ci.sparklyballs.com:9443/job/App-Builds/job/unrar-build/
+# builds will fail unless you download a copy of the build artifacts and place in a folder called build
+ADD /build/unrar-*.tar.gz /usr/bin/
 
 # add artifacts from strip stage
 COPY --from=strip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
 COPY --from=strip-stage /builds/usr /usr
+
+# environment settings
+ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 
 # install packages
 RUN \
@@ -226,6 +236,7 @@ RUN \
 
 # add local files
 COPY root/ /
+COPY GeoIP.dat /usr/share/GeoIP/GeoIP.dat
 
 # ports and volumes
 EXPOSE 8112 58846 58946 58946/udp

@@ -42,4 +42,6 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-checkstyle-result.xml
+# par2 build artifacts
+build
+par2-*.tar.gz
