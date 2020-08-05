@@ -52,6 +52,7 @@ RUN \
 		freetype-dev \
 		g++ \
 		gcc \
+		geoip-dev \
 		git \
 		lcms2-dev \
 		libffi-dev \
@@ -111,6 +112,7 @@ RUN \
 	&& pip3 install -U \
 		asn1 \
 		chardet \
+		geoip \
 		hyperlink \
 		mako \
 		markupsafe \
@@ -217,6 +219,7 @@ RUN \
 	apk add --no-cache \
 		boost-python3 \
 #		freetype \
+		geoip \
 #		gettext \
 #		lcms2 \
 		libffi \
