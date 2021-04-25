@@ -1,7 +1,11 @@
-ARG ALPINE_VER="3.12"
+ARG ALPINE_VER="3.13"
 FROM alpine:${ALPINE_VER} as fetch-stage
 
 ############## fetch stage ##############
+
+# set package versions
+ARG DELUGE_RELEASE=2.0.3 \
+LIBTORRENT_RELEASE="1.2.11"
 
 # install fetch packages
 RUN \
@@ -13,24 +17,17 @@ RUN \
 # set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# fetch version file
-RUN \
-	set -ex \
-	&& curl -o \
-	/tmp/version.txt -L \
-	"https://raw.githubusercontent.com/sparklyballs/versioning/master/version.txt"
-
 # fetch source code
 # hadolint ignore=SC1091
 RUN \
-	. /tmp/version.txt \
-	&& set -ex \
+	set -ex \
 	&& mkdir -p \
 		/source/rasterbar \
 		/source/deluge \
+		/source/patch \
 	&& curl -o \
 	/tmp/rasterbar.tar.gz	-L \
-		"https://github.com/arvidn/libtorrent/releases/download/libtorrent-${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
+		"https://github.com/arvidn/libtorrent/releases/download/v${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
 	&& tar xf \
 	/tmp/rasterbar.tar.gz -C \
 	/source/rasterbar --strip-components=1 \
@@ -39,7 +36,10 @@ RUN \
 		"http://download.deluge-torrent.org/source/${DELUGE_RELEASE%.*}/deluge-${DELUGE_RELEASE}.tar.xz" \
 	&& tar xf \
 	/tmp/deluge.tar.xz -C \
-	/source/deluge --strip-components=1
+	/source/deluge --strip-components=1 \
+	&& curl -o \
+	/source/patch/cxx14.patch -L \
+		"https://github.com/arvidn/libtorrent/pull/5026.patch"
 
 FROM alpine:${ALPINE_VER} as packages-stage
 
@@ -48,11 +48,14 @@ FROM alpine:${ALPINE_VER} as packages-stage
 # install build packages
 RUN \
 	apk add --no-cache \
+		autoconf \
+		automake \
 		boost-dev \
 		freetype-dev \
 		g++ \
 		gcc \
 		geoip-dev \
+		file \
 		git \
 		lcms2-dev \
 		libffi-dev \
@@ -61,9 +64,11 @@ RUN \
 		libpng-dev \
 		libwebp-dev \
 		libxcb-dev \
+		linux-headers \
 		make \
 		openjpeg-dev \
 		openssl-dev \
+		patch \
 		py3-pip \
 		python3-dev \
 		tiff-dev \
@@ -82,6 +87,8 @@ WORKDIR /source/rasterbar
 # build rasterbar
 RUN \
 	set -ex \
+	&& patch -p1 -i \
+		/source/patch/cxx14.patch \
 	&& ./configure \
 		--enable-python-binding \
 		--enable-tests \
@@ -90,6 +97,7 @@ RUN \
 		--prefix=/usr \
 		--sysconfdir=/etc \
 		--with-boost-system=python3.8 \
+		--with-std=c++14 \
 	&& make -j4 \
 	&& make DESTDIR=/output/rasterbar install
 
