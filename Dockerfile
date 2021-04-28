@@ -3,10 +3,6 @@ FROM alpine:${ALPINE_VER} as fetch-stage
 
 ############## fetch stage ##############
 
-# set package versions
-ARG DELUGE_RELEASE=2.0.3 \
-LIBTORRENT_RELEASE="1.2.11"
-
 # install fetch packages
 RUN \
 	apk add --no-cache \
@@ -17,17 +13,24 @@ RUN \
 # set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# fetch version file
+RUN \
+	set -ex \
+	&& curl -o \
+	/tmp/version.txt -L \
+	"https://raw.githubusercontent.com/sparklyballs/versioning/master/version.txt"
+
 # fetch source code
 # hadolint ignore=SC1091
 RUN \
-	set -ex \
+	. /tmp/version.txt \
+	&& set -ex \
 	&& mkdir -p \
 		/source/rasterbar \
 		/source/deluge \
-		/source/patch \
 	&& curl -o \
 	/tmp/rasterbar.tar.gz	-L \
-		"https://github.com/arvidn/libtorrent/releases/download/v${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
+		"https://github.com/arvidn/libtorrent//archive/${LIBTORRENT_COMMIT}.tar.gz" \
 	&& tar xf \
 	/tmp/rasterbar.tar.gz -C \
 	/source/rasterbar --strip-components=1 \
@@ -36,10 +39,7 @@ RUN \
 		"http://download.deluge-torrent.org/source/${DELUGE_RELEASE%.*}/deluge-${DELUGE_RELEASE}.tar.xz" \
 	&& tar xf \
 	/tmp/deluge.tar.xz -C \
-	/source/deluge --strip-components=1 \
-	&& curl -o \
-	/source/patch/cxx14.patch -L \
-		"https://github.com/arvidn/libtorrent/pull/5026.patch"
+	/source/deluge --strip-components=1
 
 FROM alpine:${ALPINE_VER} as packages-stage
 
@@ -50,7 +50,9 @@ RUN \
 	apk add --no-cache \
 		autoconf \
 		automake \
+#		boost-build \
 		boost-dev \
+		cmake \
 		freetype-dev \
 		g++ \
 		gcc \
@@ -68,7 +70,6 @@ RUN \
 		make \
 		openjpeg-dev \
 		openssl-dev \
-		patch \
 		py3-pip \
 		python3-dev \
 		tiff-dev \
@@ -87,19 +88,15 @@ WORKDIR /source/rasterbar
 # build rasterbar
 RUN \
 	set -ex \
-	&& patch -p1 -i \
-		/source/patch/cxx14.patch \
-	&& ./configure \
-		--enable-python-binding \
-		--enable-tests \
-		--localstatedir=/var \
-		--mandir=/usr/share/man \
-		--prefix=/usr \
-		--sysconfdir=/etc \
-		--with-boost-system=python3.8 \
-		--with-std=c++14 \
-	&& make -j4 \
-	&& make DESTDIR=/output/rasterbar install
+	&& cmake \
+		-B "_build" \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DCMAKE_INSTALL_PREFIX="/usr" \
+		-DCMAKE_INSTALL_LIBDIR="lib" \
+		-Dpython-bindings=ON \
+		-Dboost-python-module-name="python" \
+	&& make -j4 -C "_build" \
+	&& make -C "_build" DESTDIR=/output/rasterbar install
 
 FROM packages-stage as pip-stage
 
@@ -107,17 +104,15 @@ FROM packages-stage as pip-stage
 
 # install pip and python packages
 RUN \
-	pip3 install -U \
+	pip3 install --no-cache-dir  -U \
 		pip \
-		wheel
-
-RUN \
-	apk add --no-cache \
+		wheel \
+	&& apk add --no-cache \
 		py3-cairo \
 		py3-gobject3 \
 		py3-openssl \
 		py3-xdg \
-	&& pip3 install -U \
+	&& pip3 install --no-cache-dir -U \
 		asn1 \
 		chardet \
 		geoip \
