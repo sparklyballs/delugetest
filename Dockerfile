@@ -102,12 +102,14 @@ RUN \
 	&& pip3 install --no-cache-dir  -U \
 		certifi \
 		chardet \
+		future \
 		geoip \
 		mako \
 		pillow \
 		pygame \
 		pyxdg \
 		rencode \
+		requests \
 		slimit \
 		twisted[tls]
 
