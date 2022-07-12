@@ -45,3 +45,4 @@ Temporary Items
 # par2 build artifacts
 build
 par2-*.tar.gz
+unrar-*.tar.gz

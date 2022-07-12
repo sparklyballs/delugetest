@@ -1,4 +1,4 @@
-ARG ALPINE_VER="3.13"
+ARG ALPINE_VER="3.16"
 FROM alpine:${ALPINE_VER} as fetch-stage
 
 ############## fetch stage ##############
@@ -7,8 +7,7 @@ FROM alpine:${ALPINE_VER} as fetch-stage
 RUN \
 	apk add --no-cache \
 		bash \
-		curl \
-		xz
+		curl
 
 # set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -29,14 +28,14 @@ RUN \
 		/source/rasterbar \
 		/source/deluge \
 	&& curl -o \
-	/tmp/rasterbar.tar.gz	-L \
-		"https://github.com/arvidn/libtorrent//archive/${LIBTORRENT_COMMIT}.tar.gz" \
+	/tmp/rasterbar.tar.gz -L \
+	"https://github.com/arvidn/libtorrent/releases/download/v${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
 	&& tar xf \
 	/tmp/rasterbar.tar.gz -C \
 	/source/rasterbar --strip-components=1 \
 	&& curl -o \
 	/tmp/deluge.tar.xz -L \
-		"http://download.deluge-torrent.org/source/${DELUGE_RELEASE%.*}/deluge-${DELUGE_RELEASE}.tar.xz" \
+	"http://download.deluge-torrent.org/source/${DELUGE_RELEASE%.*}/deluge-${DELUGE_RELEASE}.tar.xz" \
 	&& tar xf \
 	/tmp/deluge.tar.xz -C \
 	/source/deluge --strip-components=1
@@ -47,33 +46,24 @@ FROM alpine:${ALPINE_VER} as packages-stage
 
 # install build packages
 RUN \
-	apk add --no-cache \
-		autoconf \
-		automake \
-#		boost-build \
+	set -ex \
+	&& apk add --no-cache \
+		alpine-sdk \
 		boost-dev \
 		cmake \
 		freetype-dev \
-		g++ \
-		gcc \
 		geoip-dev \
-		file \
-		git \
-		lcms2-dev \
-		libffi-dev \
-		libimagequant-dev \
 		libjpeg-turbo-dev \
-		libpng-dev \
-		libwebp-dev \
-		libxcb-dev \
 		linux-headers \
-		make \
-		openjpeg-dev \
 		openssl-dev \
+		portmidi-dev \
 		py3-pip \
+		py3-setuptools \
 		python3-dev \
-		tiff-dev \
-		zlib-dev
+		samurai \
+		sdl2_image-dev \
+		sdl2_mixer-dev \
+		sdl2_ttf-dev
 
 FROM packages-stage as rasterbar-build-stage
 
@@ -88,81 +78,66 @@ WORKDIR /source/rasterbar
 # build rasterbar
 RUN \
 	set -ex \
-	&& cmake \
-		-B "_build" \
-		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
-		-DCMAKE_INSTALL_PREFIX="/usr" \
-		-DCMAKE_INSTALL_LIBDIR="lib" \
+	&& cmake -B build -G Ninja \
+		-DCMAKE_BUILD_TYPE=MinSizeRel \
+		-DCMAKE_CXX_STANDARD=17 \
+		-DCMAKE_VERBOSE_MAKEFILE=ON \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-Dbuild_tests="$(want_check && echo ON || echo OFF)" \
 		-Dpython-bindings=ON \
-		-Dboost-python-module-name="python" \
-	&& make -j4 -C "_build" \
-	&& make -C "_build" DESTDIR=/output/rasterbar install
+		-Dpython-egg-info=ON \
+	&& cmake --build build \
+	&& DESTDIR=/output/rasterbar cmake --install build
 
 FROM packages-stage as pip-stage
 
 ############## pip stage ##############
 
 # install pip and python packages
+
 RUN \
 	pip3 install --no-cache-dir  -U \
 		pip \
 		wheel \
-	&& apk add --no-cache \
-		py3-cairo \
-		py3-gobject3 \
-		py3-openssl \
-		py3-xdg \
-	&& pip3 install --no-cache-dir -U \
-		asn1 \
+	&& pip3 install --no-cache-dir  -U \
+		certifi \
 		chardet \
 		geoip \
-		hyperlink \
 		mako \
-		markupsafe \
 		pillow \
-		pyhamcrest \
+		pygame \
+		pyxdg \
 		rencode \
-		service-identity \
-		setproctitle \
-		setuptools \
-		six \
 		slimit \
-		twisted \
-		zope-interface
+		twisted[tls]
 
-FROM packages-stage as deluge-build-stage
+FROM packages-stage as deluge_build-stage
 
-############## deluge stage ##############
-	
+############## deluge_build stage  ##############
+
 # add patch and artifacts from fetch and rasterbar stages
 COPY --from=fetch-stage /source /source
-COPY --from=pip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
+COPY --from=pip-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
 COPY --from=rasterbar-build-stage /output/rasterbar/usr /usr
-COPY patches /patches
 
 # set workdir
 WORKDIR /source/deluge
 
-
-# build app
 RUN \
 	set -ex \
-	&& git apply /patches/logging.patch \
-	&& git apply /patches/locale.patch \
 	&& python3 setup.py \
 		build \
 	&& python3 setup.py \
 		install \
 		--prefix=/usr \
 		--root="/builds/deluge"
-
 FROM alpine:${ALPINE_VER} as strip-stage
 
 ############## strip stage ##############
 
 # add artifacts from deluge, pip and rasterbar stages
-COPY --from=deluge-build-stage /builds/deluge/usr /builds/usr
-COPY --from=pip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
+COPY --from=deluge_build-stage /builds/deluge/usr /builds/usr
+COPY --from=pip-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
 COPY --from=rasterbar-build-stage /output/rasterbar/usr /builds/usr
 
 # install strip packages
@@ -177,7 +152,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # strip pip packages
 RUN \
 	set -ex \
-	&& find /usr/lib/python3.8/site-packages -type f | \
+	&& find /usr/lib/python3.10/site-packages -type f | \
 		while read -r files ; \
 		do strip "${files}" || true \
 	; done
@@ -197,8 +172,10 @@ RUN \
 	set -ex \
 	&& for cleanfiles in *.la *.pyc *.pyo; \
 	do \
-	find /usr/lib/python3.8/site-packages -iname "${cleanfiles}" -exec rm -vf '{}' + \
+	find /usr/lib/python3.10/site-packages -iname "${cleanfiles}" -exec rm -vf '{}' + \
 	; done
+
+
 
 FROM sparklyballs/alpine-test:${ALPINE_VER}
 
@@ -211,33 +188,19 @@ FROM sparklyballs/alpine-test:${ALPINE_VER}
 ADD /build/unrar-*.tar.gz /usr/bin/
 
 # add artifacts from strip stage
-COPY --from=strip-stage /usr/lib/python3.8/site-packages /usr/lib/python3.8/site-packages
+COPY --from=strip-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
 COPY --from=strip-stage /builds/usr /usr
 
 # environment settings
 ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 
-# install packages
+# runtime packages
 RUN \
 	apk add --no-cache \
-		boost-python3 \
-#		freetype \
+		boost1.78-python3 \
 		geoip \
-#		gettext \
-#		lcms2 \
-		libffi \
-#		libimagequant \
-#		libjpeg-turbo \
-#		libpng \
-#		libstdc++ \
-#		libwebp \
-#		libxcb \
-#		openjpeg \
 		p7zip \
-#		py3-cairo \
-#		py3-gobject3 \
-#		py3-openssl \
-#		tiff \
+		python3 \
 		unzip
 
 # add local files
