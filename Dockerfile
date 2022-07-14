@@ -7,7 +7,8 @@ FROM alpine:${ALPINE_VER} as fetch-stage
 RUN \
 	apk add --no-cache \
 		bash \
-		curl
+		curl \
+		git
 
 # set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -26,19 +27,14 @@ RUN \
 	&& set -ex \
 	&& mkdir -p \
 		/source/rasterbar \
-		/source/deluge \
 	&& curl -o \
 	/tmp/rasterbar.tar.gz -L \
 	"https://github.com/arvidn/libtorrent/releases/download/v${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
 	&& tar xf \
 	/tmp/rasterbar.tar.gz -C \
 	/source/rasterbar --strip-components=1 \
-	&& curl -o \
-	/tmp/deluge.tar.xz -L \
-	"http://download.deluge-torrent.org/source/${DELUGE_RELEASE%.*}/deluge-${DELUGE_RELEASE}.tar.xz" \
-	&& tar xf \
-	/tmp/deluge.tar.xz -C \
-	/source/deluge --strip-components=1
+	&& git clone -b "deluge-${DELUGE_RELEASE}" git://deluge-torrent.org/deluge.git \
+		/source/deluge
 
 FROM alpine:${ALPINE_VER} as packages-stage
 
@@ -46,26 +42,27 @@ FROM alpine:${ALPINE_VER} as packages-stage
 
 # install build packages
 RUN \
-	set -ex \
-	&& apk add --no-cache \
-		alpine-sdk \
+	apk add --no-cache \
 		boost-dev \
+		ca-certificates \
+		cargo \
 		cmake \
-		freetype-dev \
-		geoip-dev \
+		curl \
+		g++ \
+		git \
+		libffi-dev \
 		libjpeg-turbo-dev \
 		linux-headers \
+		musl-dev \
 		openssl-dev \
-		portmidi-dev \
 		py3-pip \
 		py3-setuptools \
 		python3-dev \
 		samurai \
-		sdl2_image-dev \
-		sdl2_mixer-dev \
-		sdl2_ttf-dev
+		tzdata \
+		zlib-dev
 
-FROM packages-stage as rasterbar-build-stage
+FROM packages-stage as rasterbar-stage
 
 ############## rasterbar build stage ##############
 
@@ -89,58 +86,40 @@ RUN \
 	&& cmake --build build \
 	&& DESTDIR=/output/rasterbar cmake --install build
 
-FROM packages-stage as pip-stage
-
-############## pip stage ##############
-
-# install pip and python packages
-
-RUN \
-	pip3 install --no-cache-dir  -U \
-		pip \
-		wheel \
-	&& pip3 install --no-cache-dir  -U \
-		certifi \
-		chardet \
-		future \
-		geoip \
-		mako \
-		pillow \
-		pygame \
-		pyxdg \
-		rencode \
-		requests \
-		slimit \
-		twisted[tls]
-
-FROM packages-stage as deluge_build-stage
+FROM packages-stage as deluge-stage
 
 ############## deluge_build stage  ##############
 
-# add patch and artifacts from fetch and rasterbar stages
-COPY --from=fetch-stage /source /source
-COPY --from=pip-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
-COPY --from=rasterbar-build-stage /output/rasterbar/usr /usr
+# add artifacts from fetch and rasterbar stages
+COPY --from=fetch-stage /source/deluge /source/deluge
+COPY --from=rasterbar-stage /output/rasterbar/usr /usr
 
-# set workdir
 WORKDIR /source/deluge
 
+# install pip packages
 RUN \
-	set -ex \
-	&& python3 setup.py \
-		build \
+	pip3 install --no-cache-dir -U \
+		pip \
+		wheel \
+	&& pip3 install --no-cache-dir -U -r \
+		requirements.txt
+
+# install deluge
+RUN \
+	python3 setup.py build \
 	&& python3 setup.py \
 		install \
 		--prefix=/usr \
 		--root="/builds/deluge"
+
 FROM alpine:${ALPINE_VER} as strip-stage
 
 ############## strip stage ##############
 
 # add artifacts from deluge, pip and rasterbar stages
-COPY --from=deluge_build-stage /builds/deluge/usr /builds/usr
-COPY --from=pip-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
-COPY --from=rasterbar-build-stage /output/rasterbar/usr /builds/usr
+COPY --from=deluge-stage /builds/deluge/usr /builds/usr
+COPY --from=deluge-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
+COPY --from=rasterbar-stage /output/rasterbar/usr /builds/usr
 
 # install strip packages
 RUN \
@@ -178,7 +157,6 @@ RUN \
 	; done
 
 
-
 FROM sparklyballs/alpine-test:${ALPINE_VER}
 
 ############## runtime stage ##############
@@ -199,8 +177,10 @@ ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 # runtime packages
 RUN \
 	apk add --no-cache \
+		bash \
 		boost1.78-python3 \
 		geoip \
+		libffi \
 		p7zip \
 		python3 \
 		unzip
