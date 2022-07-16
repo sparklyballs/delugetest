@@ -75,16 +75,16 @@ WORKDIR /source/rasterbar
 # build rasterbar
 RUN \
 	set -ex \
-	&& cmake -B build -G Ninja \
+	&& cmake \
 		-DCMAKE_BUILD_TYPE=MinSizeRel \
-		-DCMAKE_CXX_STANDARD=17 \
-		-DCMAKE_VERBOSE_MAKEFILE=ON \
-		-DCMAKE_INSTALL_PREFIX=/usr \
-		-Dbuild_tests="$(want_check && echo ON || echo OFF)" \
+		-DCMAKE_INSTALL_PREFIX="/usr" \
+		-DCMAKE_INSTALL_LIBDIR="lib" \
 		-Dpython-bindings=ON \
+		-Dboost-python-module-name="python" \
 		-Dpython-egg-info=ON \
-	&& cmake --build build \
-	&& DESTDIR=/output/rasterbar cmake --install build
+		-GNinja . \
+	&& ninja \
+	&& DESTDIR=/build ninja install
 
 FROM packages-stage as deluge-stage
 
@@ -92,7 +92,7 @@ FROM packages-stage as deluge-stage
 
 # add artifacts from fetch and rasterbar stages
 COPY --from=fetch-stage /source/deluge /source/deluge
-COPY --from=rasterbar-stage /output/rasterbar/usr /usr
+COPY --from=rasterbar-stage /build/usr /usr
 
 WORKDIR /source/deluge
 
@@ -101,8 +101,9 @@ RUN \
 	pip3 install --no-cache-dir -U \
 		pip \
 		wheel \
-	&& pip3 install --no-cache-dir -U -r \
-		requirements.txt
+	&& pip3 install --no-cache-dir -U \
+		-r requirements.txt \
+		-t /build/usr/lib/python3.10/site-packages
 
 # install deluge
 RUN \
@@ -110,16 +111,16 @@ RUN \
 	&& python3 setup.py \
 		install \
 		--prefix=/usr \
-		--root="/builds/deluge"
+		--root="/build"
 
 FROM alpine:${ALPINE_VER} as strip-stage
 
 ############## strip stage ##############
 
 # add artifacts from deluge, pip and rasterbar stages
-COPY --from=deluge-stage /builds/deluge/usr /builds/usr
-COPY --from=deluge-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
-COPY --from=rasterbar-stage /output/rasterbar/usr /builds/usr
+COPY --from=deluge-stage /build/usr /build/usr
+COPY --from=deluge-stage /build/usr/lib/python3.10/site-packages /build/usr/lib/python3.10/site-packages
+COPY --from=rasterbar-stage /build/usr /build/usr
 
 # install strip packages
 RUN \
@@ -133,7 +134,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # strip pip packages
 RUN \
 	set -ex \
-	&& find /usr/lib/python3.10/site-packages -type f | \
+	&& find /build/usr/lib/python3.10/site-packages -type f | \
 		while read -r files ; \
 		do strip "${files}" || true \
 	; done
@@ -143,7 +144,7 @@ RUN \
 	set -ex \
 	&& for dirs in /usr/bin /usr/lib /usr/include /usr/share; \
 	do \
-		find /builds/"${dirs}" -type f | \
+		find /build/"${dirs}" -type f | \
 		while read -r files ; do strip "${files}" || true \
 		; done \
 	; done
@@ -153,7 +154,7 @@ RUN \
 	set -ex \
 	&& for cleanfiles in *.la *.pyc *.pyo; \
 	do \
-	find /usr/lib/python3.10/site-packages -iname "${cleanfiles}" -exec rm -vf '{}' + \
+	find /build/usr/lib/python3.10/site-packages -iname "${cleanfiles}" -exec rm -vf '{}' + \
 	; done
 
 
@@ -168,8 +169,7 @@ FROM sparklyballs/alpine-test:${ALPINE_VER}
 ADD /build/unrar-*.tar.gz /usr/bin/
 
 # add artifacts from strip stage
-COPY --from=strip-stage /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
-COPY --from=strip-stage /builds/usr /usr
+COPY --from=strip-stage /build/usr /usr
 
 # environment settings
 ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
