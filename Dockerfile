@@ -162,11 +162,12 @@ FROM sparklyballs/alpine-test:${ALPINE_VER}
 
 ############## runtime stage ##############
 
-# add unrar
-# sourced from self builds here:- 
-# https://ci.sparklyballs.com:9443/job/App-Builds/job/unrar-build/
+# add unrar and GeoIP.dat
 # builds will fail unless you download a copy of the build artifacts and place in a folder called build
+# sourced from the relevant builds here https://ci.sparklyballs.com/job/App-Builds/
+
 ADD /build/unrar-*.tar.gz /usr/bin/
+ADD /build/GeoIP.dat /usr/share/GeoIP/GeoIP.dat
 
 # add artifacts from strip stage
 COPY --from=strip-stage /build/usr /usr
@@ -187,7 +188,6 @@ RUN \
 
 # add local files
 COPY root/ /
-COPY GeoIP.dat /usr/share/GeoIP/GeoIP.dat
 
 # ports and volumes
 EXPOSE 8112 58846 58946 58946/udp
