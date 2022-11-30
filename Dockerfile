@@ -179,7 +179,7 @@ ENV PYTHON_EGG_CACHE="/config/plugins/.python-eggs"
 RUN \
 	apk add --no-cache \
 		bash \
-		boost1.78-python3 \
+		boost1.80-python3 \
 		geoip \
 		libffi \
 		p7zip \
