@@ -29,7 +29,7 @@ RUN \
 		/src/deluge \
 	&& if [ -z ${LIBTORRENT_RELEASE+x} ]; then \
 	LIBTORRENT_RELEASE=$(curl -u "${SECRETUSER}:${SECRETPASS}" -sX GET "https://api.github.com/repos/arvidn/libtorrent/releases/latest" \
-	| jq -r ".tag_name" | sed 's/v//'); \
+	| jq -r ".tag_name" | sed "s/v//"); \
 	fi \
 	&& mkdir -p \
 		/src/rasterbar \
