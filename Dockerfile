@@ -1,6 +1,10 @@
 ARG ALPINE_VER="3.17"
 FROM alpine:${ALPINE_VER} as fetch-stage
 
+# build args
+ARG RELEASE
+ARG LIBTORRENT_RELEASE
+
 ############## fetch stage ##############
 
 # install fetch packages
@@ -8,33 +12,33 @@ RUN \
 	apk add --no-cache \
 		bash \
 		curl \
-		git
+		git \
+		grep \
+		jq
 
 # set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# fetch version file
+# fetch source
 RUN \
-	set -ex \
-	&& curl -o \
-	/tmp/version.txt -L \
-	"https://raw.githubusercontent.com/sparklyballs/versioning/master/version.txt"
-
-# fetch source code
-# hadolint ignore=SC1091
-RUN \
-	. /tmp/version.txt \
-	&& set -ex \
+	if [ -z ${RELEASE+x} ]; then \
+	RELEASE=$(curl -sX GET https://dev.deluge-torrent.org/wiki/Download \
+	| grep -Po "(?<=Latest Release: <strong>)[^-]+"); \
+	fi \
+	&& git clone -b "deluge-${RELEASE}" git://deluge-torrent.org/deluge.git \
+		/src/deluge \
+	&& if [ -z ${LIBTORRENT_RELEASE+x} ]; then \
+	LIBTORRENT_RELEASE=$(curl -u "${SECRETUSER}:${SECRETPASS}" -sX GET "https://api.github.com/repos/arvidn/libtorrent/releases/latest" \
+	| jq -r ".tag_name" | sed 's/v//'); \
+	fi \
 	&& mkdir -p \
-		/source/rasterbar \
+		/src/rasterbar \
 	&& curl -o \
 	/tmp/rasterbar.tar.gz -L \
-	"https://github.com/arvidn/libtorrent/releases/download/v${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
+	"https://github.com/arvidn/libtorrent/releases/download/v"${LIBTORRENT_RELEASE}"/libtorrent-rasterbar-"${LIBTORRENT_RELEASE}".tar.gz" \
 	&& tar xf \
 	/tmp/rasterbar.tar.gz -C \
-	/source/rasterbar --strip-components=1 \
-	&& git clone -b "deluge-${DELUGE_RELEASE}" git://deluge-torrent.org/deluge.git \
-		/source/deluge
+	/src/rasterbar --strip-components=1
 
 FROM alpine:${ALPINE_VER} as packages-stage
 
@@ -67,10 +71,10 @@ FROM packages-stage as rasterbar-stage
 ############## rasterbar build stage ##############
 
 # add artifacts from source stage
-COPY --from=fetch-stage /source /source
+COPY --from=fetch-stage /src /src
 
 # set workdir
-WORKDIR /source/rasterbar
+WORKDIR /src/rasterbar
 
 # build rasterbar
 RUN \
@@ -91,10 +95,10 @@ FROM packages-stage as deluge-stage
 ############## deluge_build stage  ##############
 
 # add artifacts from fetch and rasterbar stages
-COPY --from=fetch-stage /source/deluge /source/deluge
+COPY --from=fetch-stage /src/deluge /src/deluge
 COPY --from=rasterbar-stage /build/usr /usr
 
-WORKDIR /source/deluge
+WORKDIR /src/deluge
 
 # install pip packages
 RUN \
