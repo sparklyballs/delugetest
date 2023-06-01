@@ -52,6 +52,12 @@ steps {
 	}
 
 
+stage ('Copy Artifacts from App Builds') {
+steps {
+	copyArtifacts fingerprintArtifacts: true, projectName: 'App-Builds/unrar', selector: lastSuccessful(), target: '${WORKSPACE}'
+	copyArtifacts fingerprintArtifacts: true, projectName: 'App-Builds/build-geoip', selector: lastSuccessful(), target: '${WORKSPACE}'	}
+	}
+
 stage('Build Docker Image') {
 steps {
 	sh ('docker buildx build \
