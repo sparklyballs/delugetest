@@ -35,7 +35,7 @@ RUN \
 		/src/rasterbar \
 	&& curl -o \
 	/tmp/rasterbar.tar.gz -L \
-	"https://github.com/arvidn/libtorrent/releases/download/v"${LIBTORRENT_RELEASE}"/libtorrent-rasterbar-"${LIBTORRENT_RELEASE}".tar.gz" \
+	"https://github.com/arvidn/libtorrent/releases/download/v${LIBTORRENT_RELEASE}/libtorrent-rasterbar-${LIBTORRENT_RELEASE}.tar.gz" \
 	&& tar xf \
 	/tmp/rasterbar.tar.gz -C \
 	/src/rasterbar --strip-components=1
