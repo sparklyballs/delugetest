@@ -25,7 +25,7 @@ steps {
 script{
 	env.RELEASE_VER = sh(script: 'curl -sX GET https://dev.deluge-torrent.org/wiki/Download \
 	| grep -Po "(?<=Latest Release: <strong>)[^-]+"', returnStdout: true).trim()
-	env.LIBTORRENT_RELEASE_VER = sh(script: 'LIBTORRENT_RELEASE=$(curl -sX GET "https://api.github.com/repos/${GITHUB_RELEASE_URL_SUFFIX}/latest" \
+	env.LIBTORRENT_RELEASE_VER = sh(script: 'curl -sX GET "https://api.github.com/repos/${GITHUB_RELEASE_URL_SUFFIX}/latest" \
 	| jq -r ".tag_name" | sed "s/v//")', returnStdout: true).trim() 
 	}
 	}
