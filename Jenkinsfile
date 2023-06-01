@@ -40,17 +40,12 @@ steps {
 
 stage ("Do Some Linting") {
 steps {
-	sh ('docker pull ghcr.io/hadolint/hadolint')
-	sh ('docker run \
-	--rm  -i \
-	-v $WORKSPACE/Dockerfile:/Dockerfile \
-	ghcr.io/hadolint/hadolint \
-	hadolint $HADOLINT_OPTIONS \
-	/Dockerfile | tee hadolint_lint.txt')
-	recordIssues enabledForFailure: true, tool: hadoLint(pattern: 'hadolint_lint.txt')	
+	sh ('curl -o linting-script.sh -L https://raw.githubusercontent.com/sparklyballs/versioning/master/linting-script.sh')
+	sh ('/bin/bash linting-script.sh')
+	recordIssues enabledForFailure: true, tool: hadoLint(pattern: 'hadolint-result.xml')	
+	recordIssues enabledForFailure: true, tool: checkStyle(pattern: 'shellcheck-result.xml')	
 	}
 	}
-
 
 stage ('Copy Artifacts from App Builds') {
 steps {
