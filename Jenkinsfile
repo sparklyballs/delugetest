@@ -49,8 +49,8 @@ steps {
 
 stage ('Copy Artifacts from App Builds') {
 steps {
+	copyArtifacts fingerprintArtifacts: true, projectName: 'App-Builds/geolite2legacy', selector: lastSuccessful()
 	copyArtifacts fingerprintArtifacts: true, projectName: 'App-Builds/unrar', selector: lastSuccessful()
-	copyArtifacts fingerprintArtifacts: true, projectName: 'App-Builds/build-geoip', selector: lastSuccessful()
 	}
 	}
 
