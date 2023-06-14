@@ -170,7 +170,7 @@ FROM sparklyballs/alpine-test:${ALPINE_VER}
 # builds will fail unless you download a copy of the build artifacts and place in a folder called build
 # sourced from the relevant builds here https://ci.sparklyballs.com/job/App-Builds/
 
-COPY /build/unrar-*.tar.gz /usr/bin/
+ADD /build/unrar-*.tar.gz /usr/bin/
 COPY /build/GeoIP.dat /usr/share/GeoIP/GeoIP.dat
 
 # add artifacts from strip stage
